@@ -1,4 +1,5 @@
 require "fake_rails3_routes/version"
+require 'fake_rails3_routes/mapper'
 
 module FakeRails3Routes
   def self.draw(&block)

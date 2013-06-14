@@ -2,7 +2,22 @@ module FakeRails3Routes
   class Mapper
     def initialize(rails_map)
       @rails_map = rails_map
+      @scope = { :path_names => { :new => 'new', :edit => 'edit' } }
     end
+
+    # Invokes Rack::Mount::Utils.normalize path and ensure that
+    # (:locale) becomes (/:locale) instead of /(:locale). Except
+    # for root cases, where the latter is the correct one.
+    def self.normalize_path(path)
+      path = Journey::Router::Utils.normalize_path(path)
+      path.gsub!(%r{/(\(+)/?}, '\1/') unless path =~ %r{^/\(+[^)]+\)$}
+      path
+    end
+
+    def self.normalize_name(name)
+      normalize_path(name)[1..-1].gsub("/", "_")
+    end
+
 
     module Base
       # You can specify what Rails should route "/" to with the root method:
@@ -1266,7 +1281,6 @@ module FakeRails3Routes
 
     include Base
     include HttpHelpers
-    include Redirection
     include Scoping
     include Resources
   end
