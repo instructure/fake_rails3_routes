@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = FakeRails3Routes::VERSION
   spec.authors       = ["Brian Palmer"]
   spec.email         = ["brianp@instructure.com"]
-  spec.description   = %q{TODO: Write a gem description}
-  spec.summary       = %q{TODO: Write a gem summary}
+  spec.description   = %q{Write Rails 3 style routes in Rails 2 apps}
+  spec.summary       = %q{Write Rails 3 style routes in Rails 2 apps}
   spec.homepage      = ""
   spec.license       = "MIT"
 
