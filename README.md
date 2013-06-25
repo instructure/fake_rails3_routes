@@ -1,6 +1,23 @@
 # FakeRails3Routes
 
-TODO: Write a gem description
+This gem adapts the Rails 3 routing code to generate Rails 2.3 routes on
+the back-end, so that you can upgrade your Rails 2 routes to Rails 3
+format before your app is completely on Rails 3.
+
+Why? If you have a Rails 2 application of significant size, and a whole
+group of programmers actively developing it, then "stopping the world"
+to upgrade to Rails 3 isn't really an option. Doing it on a dedicated
+branch isn't really any better, you run into the same issues with
+diverging codebases. This gem is one component of the infrastructure
+necessary to upgrade your app "live" one piece at a time.
+
+## Not supported
+
+This has only been tested with fairly basic routes. Don't try anything
+too fancy, its behavior will diverge from Rails 3 routing behavior in
+some more advanced cases. Some known unsupported functionality:
+
+* Mounting Rack apps at a path with #mount
 
 ## Installation
 
@@ -8,17 +25,22 @@ Add this line to your application's Gemfile:
 
     gem 'fake_rails3_routes'
 
-And then execute:
+If your Rails 2.3 application doesn't yet use a Gemfile, do that upgrade
+first.
 
-    $ bundle
+Then use the rails_upgrade gem (https://github.com/rails/rails_upgrade)
+to upgrade your routes file to Rails 3 format. Replace the first line
+with:
 
-Or install it yourself as:
+```ruby
+FakeRails3Routes.draw do
+```
 
-    $ gem install fake_rails3_routes
+## Copyright
 
-## Usage
-
-TODO: Write usage instructions here
+The vast majority of this gem is extracted directly from Rails 3,
+licensed under the MIT license. The modifications are released under
+this same license.
 
 ## Contributing
 

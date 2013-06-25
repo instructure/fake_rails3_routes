@@ -1,7 +1,10 @@
 module FakeRails3Routes
   class Mapper
-    def initialize(rails_map)
-      @rails_map = rails_map
+    SEPARATORS = %w( / . ? ) #:nodoc:
+    HTTP_METHODS = [:get, :head, :post, :put, :delete, :options] #:nodoc:
+
+    def initialize(set)
+      @set = set
       @scope = { :path_names => { :new => 'new', :edit => 'edit' } }
     end
 
@@ -18,6 +21,184 @@ module FakeRails3Routes
       normalize_path(name)[1..-1].gsub("/", "_")
     end
 
+    class Mapping #:nodoc:
+      IGNORE_OPTIONS = [:to, :as, :via, :on, :constraints, :defaults, :only, :except, :anchor, :shallow, :shallow_path, :shallow_prefix]
+      ANCHOR_CHARACTERS_REGEX = %r{\A(\\A|\^)|(\\Z|\\z|\$)\Z}
+      WILDCARD_PATH = %r{\*([^/\)]+)\)?$}
+
+      def initialize(set, scope, path, options)
+        @set, @scope = set, scope
+        @options = (@scope[:options] || {}).merge(options)
+        @path = normalize_path(path)
+        normalize_options!
+      end
+
+      def to_route
+        #defaults.keys.reverse.each do |k|
+          #defaults[k] = defaults.delete(k) unless k == :controller
+        #end
+        [ conditions, requirements, defaults, @options[:as], @options[:anchor] ]
+      end
+
+      private
+
+        def normalize_options!
+          path_without_format = @path.sub(/\(\.:format\)$/, '')
+
+          @options.merge!(default_controller_and_action)
+
+          requirements.each do |name, requirement|
+            # segment_keys.include?(k.to_s) || k == :controller
+            next unless Regexp === requirement && !constraints[name]
+
+            if requirement.source =~ ANCHOR_CHARACTERS_REGEX
+              raise ArgumentError, "Regexp anchor characters are not allowed in routing requirements: #{requirement.inspect}"
+            end
+            if requirement.multiline?
+              raise ArgumentError, "Regexp multiline option not allowed in routing requirements: #{requirement.inspect}"
+            end
+          end
+        end
+
+        # match "account/overview"
+        def using_match_shorthand?(path, options)
+          path && (options[:to] || options[:action]).nil? && path =~ SHORTHAND_REGEX
+        end
+
+        def normalize_path(path)
+          raise ArgumentError, "path is required" if path.blank?
+          path = Mapper.normalize_path(path)
+
+          if path.match(':controller')
+            raise ArgumentError, ":controller segment is not allowed within a namespace block" if @scope[:module]
+
+            # Add a default constraint for :controller path segments that matches namespaced
+            # controllers with default routes like :controller/:action/:id(.:format), e.g:
+            # GET /admin/products/show/1
+            # => { :controller => 'admin/products', :action => 'show', :id => '1' }
+            @options[:controller] ||= /.+?/
+          end
+
+          # Add a constraint for wildcard route to make it non-greedy and match the
+          # optional format part of the route by default
+          if path.match(WILDCARD_PATH) && @options[:format] != false
+            @options[$1.to_sym] ||= /.+?/
+          end
+
+          if @options[:format] == false
+            @options.delete(:format)
+            path
+          elsif path.include?(":format") || path.end_with?('/')
+            path
+          elsif @options[:format] == true
+            "#{path}.:format"
+          else
+            # Originally this was "#{path}(.:format)" but rails 2.3
+            # automatically wraps the format in parens and gets angry if you do
+            # it explicitly.
+            # This block wasn't combined with the block above just to add this
+            # comment, it took me a while to figure this out.
+            "#{path}.:format"
+          end
+        end
+
+        def conditions
+          { :path_info => @path }.merge(constraints).merge(request_method_condition)
+        end
+
+        def requirements
+          @requirements ||= (@options[:constraints].is_a?(Hash) ? @options[:constraints] : {}).tap do |requirements|
+            requirements.reverse_merge!(@scope[:constraints]) if @scope[:constraints]
+            @options.each { |k, v| requirements[k] = v if v.is_a?(Regexp) }
+          end
+        end
+
+        def defaults
+          @defaults ||= (@options[:defaults] || {}).tap do |defaults|
+            defaults.reverse_merge!(@scope[:defaults]) if @scope[:defaults]
+            @options.each { |k, v| defaults[k] = v unless v.is_a?(Regexp) || IGNORE_OPTIONS.include?(k.to_sym) }
+          end
+        end
+
+        def default_controller_and_action
+          if to.respond_to?(:call)
+            { }
+          else
+            if to.is_a?(String)
+              controller, action = to.split('#')
+            elsif to.is_a?(Symbol)
+              action = to.to_s
+            end
+
+            controller ||= default_controller
+            action     ||= default_action
+
+            unless controller.is_a?(Regexp)
+              controller = [@scope[:module], controller].compact.join("/").presence
+            end
+
+            if controller.is_a?(String) && controller =~ %r{\A/}
+              raise ArgumentError, "controller name should not start with a slash"
+            end
+
+            controller = controller.to_s unless controller.is_a?(Regexp)
+            action     = action.to_s     unless action.is_a?(Regexp)
+
+            if controller.blank? && segment_keys.exclude?("controller")
+              raise ArgumentError, "missing :controller"
+            end
+
+            if action.blank? && segment_keys.exclude?("action")
+              raise ArgumentError, "missing :action"
+            end
+
+            hash = {}
+            hash[:controller] = controller unless controller.blank?
+            hash[:action]     = action unless action.blank?
+            hash
+          end
+        end
+
+        def blocks
+          constraints = @options[:constraints]
+          if constraints.present? && !constraints.is_a?(Hash)
+            [constraints]
+          else
+            @scope[:blocks] || []
+          end
+        end
+
+        def constraints
+          @constraints ||= requirements.reject { |k, v| segment_keys.include?(k.to_s) || k == :controller }
+        end
+
+        def request_method_condition
+          if via = @options[:via]
+            list = Array(via).map { |m| m.to_s.dasherize.upcase }
+            { :request_method => list }
+          else
+            { }
+          end
+        end
+
+        def segment_keys
+          @segment_keys ||= Journey::Path::Pattern.new(
+            Journey::Router::Strexp.compile(@path, requirements, SEPARATORS)
+          ).names
+        end
+
+        def to
+          @options[:to]
+        end
+
+        def default_controller
+          @options[:controller] || @scope[:controller]
+        end
+
+        def default_action
+          @options[:action] || @scope[:action]
+        end
+    end
 
     module Base
       # You can specify what Rails should route "/" to with the root method:
@@ -151,44 +332,6 @@ module FakeRails3Routes
       def match(path, options=nil)
       end
 
-      # Mount a Rack-based application to be used within the application.
-      #
-      #   mount SomeRackApp, :at => "some_route"
-      #
-      # Alternatively:
-      #
-      #   mount(SomeRackApp => "some_route")
-      #
-      # For options, see +match+, as +mount+ uses it internally.
-      #
-      # All mounted applications come with routing helpers to access them.
-      # These are named after the class specified, so for the above example
-      # the helper is either +some_rack_app_path+ or +some_rack_app_url+.
-      # To customize this helper's name, use the +:as+ option:
-      #
-      #   mount(SomeRackApp => "some_route", :as => "exciting")
-      #
-      # This will generate the +exciting_path+ and +exciting_url+ helpers
-      # which can be used to navigate to this mounted app.
-      def mount(app, options = nil)
-        if options
-          path = options.delete(:at)
-        else
-          options = app
-          app, path = options.find { |k, v| k.respond_to?(:call) }
-          options.delete(app) if app
-        end
-
-        raise "A rack application must be specified" unless path
-
-        options[:as] ||= app_name(app)
-
-        match(path, options.merge(:to => app, :anchor => false, :format => false))
-
-        define_generate_prefix(app, options[:as])
-        self
-      end
-
       def default_url_options=(options)
         @set.default_url_options = options
       end
@@ -199,36 +342,6 @@ module FakeRails3Routes
           instance_exec(&block)
         end
       end
-
-      private
-        def app_name(app)
-          return unless app.respond_to?(:routes)
-
-          if app.respond_to?(:railtie_name)
-            app.railtie_name
-          else
-            class_name = app.class.is_a?(Class) ? app.name : app.class.name
-            ActiveSupport::Inflector.underscore(class_name).gsub("/", "_")
-          end
-        end
-
-        def define_generate_prefix(app, name)
-          return unless app.respond_to?(:routes) && app.routes.respond_to?(:define_mounted_helper)
-
-          _route = @set.named_routes.routes[name.to_sym]
-          _routes = @set
-          app.routes.define_mounted_helper(name)
-          app.routes.class_eval do
-            define_method :_generate_prefix do |options|
-              prefix_options = options.slice(*_route.segment_keys)
-              # we must actually delete prefix segment keys to avoid passing them to next url_for
-              _route.segment_keys.each { |k| options.delete(k) }
-              prefix = _routes.url_helpers.send("#{name}_path", prefix_options)
-              prefix = prefix.gsub(%r{/\z}, '')
-              prefix
-            end
-          end
-        end
     end
 
     module HttpHelpers
@@ -634,7 +747,7 @@ module FakeRails3Routes
       # CANONICAL_ACTIONS holds all actions that does not need a prefix or
       # a path appended since they fit properly in their scope level.
       VALID_ON_OPTIONS  = [:new, :collection, :member]
-      RESOURCE_OPTIONS  = [:as, :controller, :path, :only, :except]
+      RESOURCE_OPTIONS  = [:as, :controller, :path, :only, :except, :format]
       CANONICAL_ACTIONS = %w(index create new show update destroy)
 
       class Resource #:nodoc:
@@ -764,10 +877,6 @@ module FakeRails3Routes
         resource_scope(:resource, SingletonResource.new(resources.pop, options)) do
           yield if block_given?
 
-          collection do
-            post :create
-          end if parent_resource.actions.include?(:create)
-
           new do
             get :new
           end if parent_resource.actions.include?(:new)
@@ -778,6 +887,10 @@ module FakeRails3Routes
             put    :update if parent_resource.actions.include?(:update)
             delete :destroy if parent_resource.actions.include?(:destroy)
           end
+
+          collection do
+            post :create
+          end if parent_resource.actions.include?(:create)
         end
 
         self
@@ -913,7 +1026,13 @@ module FakeRails3Routes
 
           member do
             get    :edit if parent_resource.actions.include?(:edit)
+          end
+
+          member do
             get    :show if parent_resource.actions.include?(:show)
+          end
+
+          member do
             put    :update if parent_resource.actions.include?(:update)
             delete :destroy if parent_resource.actions.include?(:destroy)
           end
@@ -1045,6 +1164,10 @@ module FakeRails3Routes
           raise ArgumentError, "Unknown scope #{on.inspect} given to :on"
         end
 
+        if !options.key?(:format)
+          options[:format] = false
+        end
+
         paths.each { |_path| decomposed_match(_path, options.dup) }
         self
       end
@@ -1084,11 +1207,17 @@ module FakeRails3Routes
           options[:as] = name_for_action(options[:as], action)
         end
 
-        puts [@set, @scope, path, options].inspect
 
-        #mapping = Mapping.new(@set, @scope, path, options)
-        #app, conditions, requirements, defaults, as, anchor = mapping.to_route
-        #@set.add_route(app, conditions, requirements, defaults, as, anchor)
+        mapping = Mapping.new(@set, @scope, path, options)
+        #puts mapping.to_route.inspect
+        conditions, requirements, defaults, as, anchor = mapping.to_route
+        defaults[:conditions] ||= {}
+        if conditions[:request_method]
+          via = conditions.delete(:request_method).map { |v| v.downcase.to_sym }
+          via = via.first if via.size == 1
+          defaults[:conditions][:method] = via
+        end
+        @set.add_route(conditions, requirements, defaults, as, anchor)
       end
 
       def root(options={})
@@ -1263,7 +1392,11 @@ module FakeRails3Routes
           when :root
             [name_prefix, collection_name, prefix]
           else
-            [name_prefix, member_name, prefix]
+            if as
+              [name_prefix, member_name, prefix]
+            else
+              []
+            end
           end
 
           if candidate = name.select(&:present?).join("_").presence
@@ -1271,7 +1404,7 @@ module FakeRails3Routes
             # and return nil in case it isn't. Otherwise, we pass the invalid name
             # forward so the underlying router engine treats it and raises an exception.
             if as.nil?
-              candidate unless @set.routes.find { |r| r.name == candidate } || candidate !~ /\A[_a-z]/i
+              candidate unless @set.named_route?(candidate) || candidate !~ /\A[_a-z]/i
             else
               candidate
             end

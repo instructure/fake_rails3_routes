@@ -1,5 +1,6 @@
+require 'set'
+
 require "fake_rails3_routes/version"
-require 'fake_rails3_routes/mapper'
 
 module FakeRails3Routes
   def self.draw(&block)
@@ -7,10 +8,41 @@ module FakeRails3Routes
       # we're on rails 3, no need to emulate
       Rails.application.class.routes.draw(&block)
     else
+      @route_set ||= FakeRails3Routes::RouteSet.new
+      @route_set.draw(block)
+    end
+  end
+
+  class RouteSet
+    def draw(block)
+      require 'fake_rails3_routes/mapper'
+      require 'journey'
       ActionController::Routing::Routes.draw do |map|
-        mapper = FakeRails3Routes::Mapper.new(map)
+        @map = map
+        @named_routes = Set.new
+        mapper = FakeRails3Routes::Mapper.new(self)
         mapper.instance_exec(&block)
       end
+    end
+
+    def add_route(conditions = {}, requirements = {}, defaults = {}, name = nil, anchor = true)
+      defaults = defaults.merge(requirements)
+      path = conditions.delete(:path_info)
+      if defaults[:format]
+        path.sub!("(.:format)", '')
+      end
+      if name == 'root'
+        @map.send(name, defaults)
+      elsif name
+        @map.send(name, path, defaults)
+        @named_routes << name
+      else
+        @map.connect(path, defaults)
+      end
+    end
+
+    def named_route?(name)
+      !!(name && @map.instance_variable_get(:@set).named_routes.get(name))
     end
   end
 end
