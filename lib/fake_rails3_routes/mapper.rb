@@ -34,9 +34,6 @@ module FakeRails3Routes
       end
 
       def to_route
-        #defaults.keys.reverse.each do |k|
-          #defaults[k] = defaults.delete(k) unless k == :controller
-        #end
         [ conditions, requirements, defaults, @options[:as], @options[:anchor] ]
       end
 
@@ -875,6 +872,8 @@ module FakeRails3Routes
         end
 
         resource_scope(:resource, SingletonResource.new(resources.pop, options)) do
+          named_concerns = options.delete(:concerns)
+          concerns(named_concerns)
           yield if block_given?
 
           new do
@@ -1013,6 +1012,8 @@ module FakeRails3Routes
         end
 
         resource_scope(:resources, Resource.new(resources.pop, options)) do
+          named_concerns = options.delete(:concerns)
+          concerns(named_concerns)
           yield if block_given?
 
           collection do
@@ -1170,6 +1171,21 @@ module FakeRails3Routes
 
         paths.each { |_path| decomposed_match(_path, options.dup) }
         self
+      end
+
+      def concern(name, &block)
+        @concerns ||= {}
+        @concerns[name] = block
+      end
+
+      def concerns(*names)
+        Array(names).flatten.compact.each do |name|
+          if @concerns && concern = @concerns[name]
+            instance_eval(&concern)
+          else
+            raise "No concern named #{name} was found!"
+          end
+        end
       end
 
       def using_match_shorthand?(path, options)

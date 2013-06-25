@@ -1,4 +1,4 @@
-# FakeRails3Routes
+# Fake Rails 3 Routes
 
 This gem adapts the Rails 3 routing code to generate Rails 2.3 routes on
 the back-end, so that you can upgrade your Rails 2 routes to Rails 3
@@ -35,6 +35,12 @@ with:
 ```ruby
 FakeRails3Routes.draw do
 ```
+
+### Concerns
+
+This gem includes a backport of the `concerns` routing concept from
+Rails 4. If you want to use concerns in Rails 3, just include the
+`routing_concerns` (https://github.com/rails/routing_concerns) gem in your Gemfile.
 
 ## Copyright
 
