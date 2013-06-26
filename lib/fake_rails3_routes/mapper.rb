@@ -1169,10 +1169,6 @@ module FakeRails3Routes
           raise ArgumentError, "Unknown scope #{on.inspect} given to :on"
         end
 
-        if !options.key?(:format)
-          options[:format] = false
-        end
-
         paths.each { |_path| decomposed_match(_path, options.dup) }
         self
       end

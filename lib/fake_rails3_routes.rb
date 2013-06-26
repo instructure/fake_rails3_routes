@@ -29,9 +29,6 @@ module FakeRails3Routes
     def add_route(conditions = {}, requirements = {}, defaults = {}, name = nil, anchor = true)
       defaults = defaults.merge(requirements)
       path = conditions.delete(:path_info)
-      if defaults[:format]
-        path.sub!("(.:format)", '')
-      end
       if name == 'root'
         @map.send(name, defaults)
       elsif name
