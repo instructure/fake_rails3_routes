@@ -14,6 +14,7 @@ module FakeRails3Routes
   end
 
   class RouteSet
+    attr_reader :map
     def draw(block)
       require 'fake_rails3_routes/mapper'
       require 'journey'

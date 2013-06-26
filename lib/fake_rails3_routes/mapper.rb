@@ -1142,6 +1142,10 @@ module FakeRails3Routes
         parent_resource.instance_of?(Resource) && @scope[:shallow]
       end
 
+      def map
+        @set.map
+      end
+
       def match(path, *rest)
         if rest.empty? && Hash === path
           options  = path
