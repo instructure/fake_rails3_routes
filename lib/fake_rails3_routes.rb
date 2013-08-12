@@ -32,7 +32,7 @@ module FakeRails3Routes
       if name == 'root'
         @map.send(name, defaults)
       elsif name
-        @map.send(name, path, defaults)
+        @map.named_route(name, path, defaults)
         @named_routes << name
       else
         @map.connect(path, defaults)

@@ -1025,17 +1025,19 @@ module FakeRails3Routes
             get :new
           end if parent_resource.actions.include?(:new)
 
+          id_requirement = { :id => /[^#{ActionController::Routing::SEPARATORS.join}]+/ }
+
           member do
-            get    :edit if parent_resource.actions.include?(:edit)
+            get(:edit, id_requirement) if parent_resource.actions.include?(:edit)
           end
 
           member do
-            get    :show if parent_resource.actions.include?(:show)
+            get(:show, id_requirement) if parent_resource.actions.include?(:show)
           end
 
           member do
-            put    :update if parent_resource.actions.include?(:update)
-            delete :destroy if parent_resource.actions.include?(:destroy)
+            put(:update, id_requirement) if parent_resource.actions.include?(:update)
+            delete(:destroy, id_requirement) if parent_resource.actions.include?(:destroy)
           end
         end
 
